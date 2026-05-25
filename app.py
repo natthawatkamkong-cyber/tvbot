@@ -12,7 +12,7 @@ def test():
     return "WEBHOOK TEST OK"
 
 BOT_TOKEN = "8394186084:AAHeWDeMdEVwLuwdgNtm8YUuagxzV0QD0j0"
-CHAT_ID = "-100373230227"
+CHAT_ID = "7484580616"
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
