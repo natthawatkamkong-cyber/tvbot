@@ -5,6 +5,9 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return "TVBOT ONLINE"
+    @app.route('/test')
+def test():
+    return {"status": "telegram test ok"}
 
 BOT_TOKEN = "8394186084:AAHeWDeMdEVwLuwdgNtm8YUuagxzV0QD0j0"
 CHAT_ID = "-100373230227"
