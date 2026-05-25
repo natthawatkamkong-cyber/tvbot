@@ -23,7 +23,7 @@ def test():
 # TELEGRAM CONFIG
 # =========================
 BOT_TOKEN = "8394186084:AAHeWDeMdEVwLuwdgNtm8YUuagxzV0QD0j0"
-CHAT_ID = "7484580616"
+CHAT_ID = "-100373230227"
 
 
 # =========================
