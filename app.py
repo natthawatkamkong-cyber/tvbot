@@ -2,6 +2,9 @@ from flask import Flask, request
 import requests
 
 app = Flask(__name__)
+@app.route('/')
+def home():
+    return "TVBOT ONLINE"
 
 BOT_TOKEN = "8394186084:AAHeWDeMdEVwLuwdgNtm8YUuagxzV0QD0j0"
 CHAT_ID = "-100373230227"
