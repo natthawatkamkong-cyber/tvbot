@@ -13,7 +13,7 @@ BOT_TOKEN = "8394186084:AAHeWDeMdEvwLuWdgNtm8YUaagxzV0QD0j0"
 CHAT_ID = "-100373230227"
 
 # =========================
-# HOME
+# HOME 
 # =========================
 
 @app.route("/")
