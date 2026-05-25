@@ -7,7 +7,7 @@ app = Flask(__name__)
 # TELEGRAM CONFIG
 # =========================
 
-BOT_TOKEN = "8394186084:AAHeWDeMdEVwLuwdgNtm8YUuagxzV0QD0j0"
+BOT_TOKEN = "8394186084:AAHeWDeMdEvwLuWdgNtm8YUaagxzV0QD0j0"
 
 # ห้อง VVIP GROUP
 CHAT_ID = "-100373230227"
