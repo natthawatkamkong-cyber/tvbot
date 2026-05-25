@@ -3,17 +3,32 @@ import requests
 
 app = Flask(__name__)
 
+# =========================
+# HOME
+# =========================
 @app.route("/")
 def home():
     return "TVBOT ONLINE"
 
+
+# =========================
+# TEST
+# =========================
 @app.route("/test")
 def test():
     return "WEBHOOK TEST OK"
 
+
+# =========================
+# TELEGRAM CONFIG
+# =========================
 BOT_TOKEN = "8394186084:AAHeWDeMdEVwLuwdgNtm8YUuagxzV0QD0j0"
 CHAT_ID = "7484580616"
 
+
+# =========================
+# WEBHOOK
+# =========================
 @app.route('/webhook', methods=['POST'])
 def webhook():
 
@@ -48,17 +63,22 @@ SESSION: {session}
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-response = requests.post(url, json={
-    "chat_id": CHAT_ID,
-    "text": message
-})
+    response = requests.post(
+        url,
+        json={
+            "chat_id": CHAT_ID,
+            "text": message
+        }
+    )
 
-print(response.text)
+    print(response.text)
 
     return {"status": "ok"}
 
+
+# =========================
+# RUN APP
+# =========================
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5050)
-
-
 
