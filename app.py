@@ -10,7 +10,7 @@ app = Flask(__name__)
 BOT_TOKEN = "8394186084:AAHeWDeMdEvwLuWdgNtm8YUaagxzV0QD0j0"
 
 # ห้อง VVIP GROUP
-CHAT_ID = "--1003737230227"
+CHAT_ID = "-1003737230227"
 
 # =========================
 # HOME 
