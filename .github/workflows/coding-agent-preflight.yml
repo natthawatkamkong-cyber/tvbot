@@ -1,0 +1,29 @@
+name: Coding Agent Preflight
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: coding-agent-preflight
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+    steps:
+      - name: Verify agent configuration without exposing credentials
+        shell: bash
+        run: |
+          if [ -z "$AGENT_API_KEY" ]; then
+            echo "::warning::BLOCKED: AGENT_API_KEY secret not configured; no coding agent is running"
+            echo "status=BLOCKED" >> "$GITHUB_STEP_SUMMARY"
+            echo "reason=Missing AGENT_API_KEY; agent provider and runner still require setup" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "status=CONFIGURED_ONLY" >> "$GITHUB_STEP_SUMMARY"
+            echo "A secret exists, but no autonomous coding runner has been installed or verified." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "This workflow performs a safe configuration check only. It does not run an AI coding agent."
