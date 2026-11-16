@@ -1,105 +1,64 @@
-from flask import Flask, request
+import hmac
+import logging
+import os
+
 import requests
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 
-# =========================
-# TELEGRAM CONFIG
-# =========================
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
-BOT_TOKEN = "8394186084:AAHeWDeMdEvwLuWdgNtm8YUaagxzV0QD0j0"
+ALLOWED_FIELDS = (
+    "signal", "symbol", "tf", "state", "bias_h1", "bias_m15",
+    "entry", "sl", "tp1", "tp2", "tp3", "rr", "session", "time",
+)
 
-# ห้อง VVIP GROUP
-CHAT_ID = "-1003737230227"
 
-# =========================
-# HOME 
-# =========================
-
-@app.route("/")
+@app.get("/")
 def home():
-    return "TVBOT ONLINE"
+    return jsonify(status="online")
 
-# =========================
-# TEST PAGE
-# =========================
 
-@app.route("/test")
-def test():
-    return "WEBHOOK TEST OK"
+@app.get("/health")
+def health():
+    return jsonify(status="ok", configured=bool(BOT_TOKEN and CHAT_ID and WEBHOOK_SECRET))
 
-# =========================
-# WEBHOOK
-# =========================
 
-@app.route('/webhook', methods=['POST'])
+@app.post("/webhook")
 def webhook():
+    if not WEBHOOK_SECRET:
+        return jsonify(error="Webhook not configured"), 503
+    provided = request.headers.get("X-Webhook-Secret", "")
+    if not hmac.compare_digest(provided, WEBHOOK_SECRET):
+        return jsonify(error="Unauthorized"), 401
+    if not request.is_json:
+        return jsonify(error="JSON required"), 415
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="JSON object required"), 400
+    if not BOT_TOKEN or not CHAT_ID:
+        return jsonify(error="Telegram not configured"), 503
+    message = "\n".join(f"{key.upper()}: {str(data.get(key, ''))[:160]}" for key in ALLOWED_FIELDS)
+    try:
+        response = requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={"chat_id": CHAT_ID, "text": message},
+            timeout=10,
+        )
+        response.raise_for_status()
+        result = response.json()
+        if not result.get("ok"):
+            app.logger.error("Telegram API rejected message")
+            return jsonify(error="Telegram delivery failed"), 502
+    except (requests.RequestException, ValueError):
+        app.logger.exception("Telegram delivery failed")
+        return jsonify(error="Telegram delivery failed"), 502
+    return jsonify(status="sent")
 
-    data = request.json
 
-    print("RAW DATA:", data)
-
-    signal = data.get("signal", "")
-    symbol = data.get("symbol", "")
-    tf = data.get("tf", "")
-
-    state = data.get("state", "")
-    bias_h1 = data.get("bias_h1", "")
-    bias_m15 = data.get("bias_m15", "")
-
-    entry = data.get("entry", "")
-    sl = data.get("sl", "")
-
-    tp1 = data.get("tp1", "")
-    tp2 = data.get("tp2", "")
-    tp3 = data.get("tp3", "")
-
-    rr = data.get("rr", "")
-    session = data.get("session", "")
-    time_value = data.get("time", "")
-
-    message = f"""
-SIGNAL: {signal}
-
-SYMBOL: {symbol}
-TF: {tf}
-
-STATE: {state}
-
-BIAS_H1: {bias_h1}
-BIAS_M15: {bias_m15}
-
-ENTRY: {entry}
-SL: {sl}
-
-TP1: {tp1}
-TP2: {tp2}
-TP3: {tp3}
-
-RR: {rr}
-
-SESSION: {session}
-
-TIME: {time_value}
-"""
-
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-    response = requests.post(
-        url,
-        json={
-            "chat_id": CHAT_ID,
-            "text": message
-        }
-    )
-
-    print("TELEGRAM RESPONSE:", response.text)
-
-    return {"status": "ok"}
-
-# =========================
-# RUN APP
-# =========================
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5050)
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5050)
