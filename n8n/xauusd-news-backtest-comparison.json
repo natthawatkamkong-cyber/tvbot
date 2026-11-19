@@ -1,0 +1,196 @@
+{
+  "id": "GoldAiNewsBacktest",
+  "name": "Gold AI - compare backtest with and without news filter",
+  "active": false,
+  "nodes": [
+    {
+      "id": "eed1e28e-e0af-44b1-a491-db8315bf8472",
+      "name": "Receive historical comparison data",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "f5acee1e-d3d2-4900-8a2d-31ce9ecf7e52",
+      "name": "Prepare calendar checks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst inputs=$input.all();\nif(inputs.length!==1) throw new Error(\"Expected exactly one historical comparison dataset\");\nconst {signals,calendar,beforeMinutes,afterMinutes}=inputs[0].json;\nif(!Array.isArray(signals)||!signals.length) throw new Error(\"Expected historical signals\");\nreturn signals.map(signal=>({json:{asOf:signal.confirmedAt,calendar,beforeMinutes,afterMinutes},pairedItem:{item:0}}));"
+      }
+    },
+    {
+      "id": "76b57570-8c82-4755-83b9-6db47e71244b",
+      "name": "Check news at signal time",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "GoldAiNewsRisk"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "02d52f29-5b89-48f8-bd12-aa4f614616fe",
+      "name": "Build matched replay variants",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst {signals,candles,roundTripCost}=$(\"Receive historical comparison data\").first().json;\nconst checks=$input.all().map(item=>item.json);\nif(checks.length!==signals.length || checks.some((item,i)=>item.asOf!==signals[i].confirmedAt ||\n  ![\"CLEAR\",\"HIGH_NEWS_RISK\"].includes(item.newsRisk?.status))) throw new Error(\"News calendar does not cover every signal\");\nconst filtered=signals.filter((_,i)=>checks[i].newsRisk.status===\"CLEAR\");\nreturn [{json:{signals,candles,roundTripCost}},{json:{signals:filtered,candles,roundTripCost}}];"
+      }
+    },
+    {
+      "id": "23caa9be-a027-4a65-b07e-08c29f142643",
+      "name": "Replay both variants",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "GoldAiTradeReplay"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "7b73ee17-7145-44cd-9234-c816bf64bb7f",
+      "name": "Measure R and drawdown",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "GoldAiBacktestMetrics"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "3648544b-db15-45d1-a7b9-9155ae25540e",
+      "name": "Compare no filter vs news filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst report=$input.all().map(item=>item.json);\nif(report.length!==2) throw new Error(\"Expected two backtest metric sets\");\nconst [withoutNewsFilter,withNewsFilter]=report;\nconst variants=$(\"Build matched replay variants\").all();\nconst blockedSignals=variants[0].json.signals.length-variants[1].json.signals.length;\nreturn [{json:{withoutNewsFilter,withNewsFilter,blockedSignals}}];"
+      }
+    }
+  ],
+  "connections": {
+    "Receive historical comparison data": {
+      "main": [
+        [
+          {
+            "node": "Prepare calendar checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare calendar checks": {
+      "main": [
+        [
+          {
+            "node": "Check news at signal time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check news at signal time": {
+      "main": [
+        [
+          {
+            "node": "Build matched replay variants",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build matched replay variants": {
+      "main": [
+        [
+          {
+            "node": "Replay both variants",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replay both variants": {
+      "main": [
+        [
+          {
+            "node": "Measure R and drawdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Measure R and drawdown": {
+      "main": [
+        [
+          {
+            "node": "Compare no filter vs news filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
