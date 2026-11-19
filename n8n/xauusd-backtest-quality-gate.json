@@ -1,0 +1,49 @@
+{
+  "id": "GoldAiBacktestQuality",
+  "name": "Gold AI - backtest quality gate",
+  "active": false,
+  "nodes": [
+    {
+      "id": "b6454b06-0927-4e7e-a3e6-4731cc0ef53f",
+      "name": "Receive measured candidate evidence",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "c9f9a05d-5a72-4a69-b726-c6eb07d36f92",
+      "name": "Check strategy quality",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map(({json}, index) => {\n  const {metrics, limits, evidence} = json;\n  const {count, wins, losses, expectancyR, profitFactor, maxClosedTradeDrawdownR} = metrics ?? {};\n  const {minTrades, minPayoffRatio, maxDrawdownR} = limits ?? {};\n  const nonnegative = value => Number.isFinite(value) && value >= 0;\n  if (![count,wins,losses].every(value => Number.isSafeInteger(value) && value >= 0) ||\n      wins + losses > count || !Number.isSafeInteger(minTrades) || minTrades < 1 ||\n      !Number.isFinite(minPayoffRatio) || minPayoffRatio <= 0 || !nonnegative(maxDrawdownR) ||\n      !nonnegative(maxClosedTradeDrawdownR) ||\n      (count > 0 && !Number.isFinite(expectancyR)) ||\n      (losses > 0 && !nonnegative(profitFactor))) throw new Error(\"Invalid backtest metrics or quality limits\");\n  // Profit factor is total winning R divided by total losing R.\n  const realizedPayoff = wins > 0 && losses > 0 ? profitFactor * losses / wins : null;\n  const reasons = [];\n  if (evidence?.ownerDecision === \"REJECTED\") reasons.push(\"OWNER_REJECTED_VERSION\");\n  if (count < minTrades) reasons.push(\"INSUFFICIENT_CLOSED_TRADES\");\n  if (wins <= losses) reasons.push(\"WINS_DO_NOT_EXCEED_LOSSES\");\n  if (realizedPayoff === null || realizedPayoff < minPayoffRatio) reasons.push(\"REALIZED_PAYOFF_NOT_PROVEN\");\n  if (!Number.isFinite(expectancyR) || expectancyR <= 0) reasons.push(\"NON_POSITIVE_NET_EXPECTANCY\");\n  if (maxClosedTradeDrawdownR > maxDrawdownR) reasons.push(\"DRAWDOWN_LIMIT_EXCEEDED\");\n  if (evidence?.historicalHoldout !== true || evidence?.costsApplied !== true) reasons.push(\"MISSING_HOLDOUT_OR_COST_EVIDENCE\");\n  return {json:{status:reasons.length?\"FAIL\":\"ELIGIBLE_FOR_PAPER_REVIEW\",realizedPayoff,reasons,\n    metrics,limits,livePromotionAllowed:false},pairedItem:{item:index}};\n});"
+      }
+    }
+  ],
+  "connections": {
+    "Receive measured candidate evidence": {
+      "main": [
+        [
+          {
+            "node": "Check strategy quality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
