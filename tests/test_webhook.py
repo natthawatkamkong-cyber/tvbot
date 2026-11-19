@@ -66,15 +66,18 @@ def test_valid_signal_sends_telegram(client, monkeypatch):
     assert captured["timeout"] == 10
 
 
-def test_telegram_failure_returns_error(client, monkeypatch):
+def test_telegram_failure_returns_error(client, monkeypatch, caplog):
     import app
     import requests
 
     def fail(*args, **kwargs):
-        raise requests.Timeout()
+        raise requests.Timeout("https://api.telegram.org/bottest-token/sendMessage")
 
     monkeypatch.setattr(app.requests, "post", fail)
     response = client.post(
         "/webhook", json={"signal": "BUY"}, headers={"X-Webhook-Secret": "test-secret"}
     )
     assert response.status_code == 502
+
+    assert "Telegram delivery failed" in caplog.text
+    assert "test-token" not in caplog.text
