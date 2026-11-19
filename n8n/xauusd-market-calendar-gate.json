@@ -1,0 +1,49 @@
+{
+  "id": "GoldAiSessionGate",
+  "name": "Gold AI - market calendar gate",
+  "active": false,
+  "nodes": [
+    {
+      "id": "1546bb4e-1dd3-423b-8f87-a3beed224892",
+      "name": "Receive XAUUSD market calendar",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "73f5d961-080a-4f3a-84e1-ba8a285ebfe1",
+      "name": "Check session before fetching",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nfunction instant(value) {\n  return typeof value === \"string\" && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$/.test(value)\n    ? Date.parse(value) : NaN;\n}\n\nreturn $input.all().map((item, index) => {\n  const {source, asOf, calendar} = item.json;\n  const now = instant(asOf);\n  const start = instant(calendar?.validFrom);\n  const end = instant(calendar?.validUntil);\n  let status = \"CALENDAR_UNAVAILABLE\";\n  let nextOpenAt = null;\n\n  if (typeof source === \"string\" && source.trim() && source === calendar?.source &&\n      Number.isFinite(now) && Number.isFinite(start) && Number.isFinite(end) &&\n      start <= now && now < end && Array.isArray(calendar.openWindows)) {\n    const windows = calendar.openWindows.map(window => [instant(window?.start), instant(window?.end)])\n      .sort(([left], [right]) => left - right);\n    const valid = windows.every(([open, close], i) =>\n      Number.isFinite(open) && Number.isFinite(close) && start <= open && open < close &&\n      close <= end && (i === 0 || windows[i - 1][1] <= open));\n    if (valid) {\n      const isOpen = windows.some(([open, close]) => open <= now && now < close);\n      status = isOpen ? \"MARKET_OPEN\" : \"MARKET_CLOSED\";\n      const next = isOpen ? undefined : windows.find(([open]) => open > now);\n      nextOpenAt = next ? new Date(next[0]).toISOString() : null;\n    }\n  }\n\n  return {\n    json: {symbol: \"XAUUSD\", source, asOf, marketSession: {status, nextOpenAt, allowFetch: status === \"MARKET_OPEN\"}},\n    pairedItem: {item: index},\n  };\n});"
+      }
+    }
+  ],
+  "connections": {
+    "Receive XAUUSD market calendar": {
+      "main": [
+        [
+          {
+            "node": "Check session before fetching",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
