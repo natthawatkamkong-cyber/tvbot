@@ -1,0 +1,49 @@
+{
+  "id": "GoldAiClosedBars",
+  "name": "Gold AI - closed candle analysis",
+  "active": false,
+  "nodes": [
+    {
+      "id": "2daa9fde-11c3-46af-bbe9-fc5753a5da67",
+      "name": "Receive XAUUSD candles",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "f207cd59-bf72-4340-8d55-50eada618016",
+      "name": "Validate closed candles and calculate EMA",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst timeframes = [\"D1\", \"H4\", \"H1\", \"M15\", \"M1\"];\nconst periods = [13, 50, 200];\nconst decimal = /^(?:\\d+(?:\\.\\d+)?|\\.\\d+)$/;\nconst number = value => typeof value === \"string\" && decimal.test(value) ? Number(value) : value;\nfunction timestamp(value) {\n  if (typeof value !== \"string\" || !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)) {\n    return NaN;\n  }\n  return Date.parse(value);\n}\nfunction ema(closes, period) {\n  if (closes.length < period) return null;\n  const weight = 2 / (period + 1);\n  let average = closes.slice(0, period).reduce((sum, close) => sum + close, 0) / period;\n  for (const close of closes.slice(period)) average += weight * (close - average);\n  return average;\n}\nreturn $input.all().map((item, index) => {\n  const {symbol, source, asOf, candlesByTimeframe} = item.json;\n  const cutoff = timestamp(asOf);\n  if (![\"XAUUSD\", \"XAU/USD\"].includes(symbol) || typeof source !== \"string\" || !source.trim() || !Number.isFinite(cutoff)) {\n    throw new Error(\"Expected XAUUSD, source and timezone-aware asOf timestamp\");\n  }\n  const market = {};\n  for (const timeframe of timeframes) {\n    const input = candlesByTimeframe?.[timeframe];\n    if (!Array.isArray(input) || input.length === 0) throw new Error(\"Missing candles for \" + timeframe);\n    const closed = new Map();\n    for (const candle of input) {\n      const closeTime = timestamp(candle?.closeTime);\n      if (!Number.isFinite(closeTime)) throw new Error(\"Invalid candle close time for \" + timeframe);\n      if (closeTime > cutoff) continue;\n      const [open, high, low, close] = [\"open\", \"high\", \"low\", \"close\"].map(key => number(candle[key]));\n      if (![open, high, low, close].every(value => Number.isFinite(value) && value > 0)\n          || high < Math.max(open, close, low) || low > Math.min(open, close)) {\n        throw new Error(\"Invalid OHLC for \" + timeframe);\n      }\n      const row = {closeTime: new Date(closeTime).toISOString(), open, high, low, close};\n      if (closed.has(closeTime) && JSON.stringify(closed.get(closeTime)) !== JSON.stringify(row)) {\n        throw new Error(\"Conflicting candles for \" + timeframe);\n      }\n      closed.set(closeTime, row);\n    }\n    const candles = [...closed.entries()].sort(([a], [b]) => a - b).map(([, candle]) => candle);\n    if (!candles.length) throw new Error(\"No closed candles for \" + timeframe);\n    const closes = candles.map(candle => candle.close);\n    market[timeframe] = {\n      candleCount: candles.length,\n      latestCandle: candles.at(-1),\n      ema: Object.fromEntries(periods.map(period => [period, ema(closes, period)])),\n    };\n  }\n  return {json: {symbol:\"XAUUSD\", source, asOf:new Date(cutoff).toISOString(), market}, pairedItem:{item:index}};\n});"
+      }
+    }
+  ],
+  "connections": {
+    "Receive XAUUSD candles": {
+      "main": [
+        [
+          {
+            "node": "Validate closed candles and calculate EMA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
