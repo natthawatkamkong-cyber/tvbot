@@ -1,0 +1,49 @@
+{
+  "id": "GoldAiBacktestMetrics",
+  "name": "Gold AI - backtest metrics",
+  "active": false,
+  "nodes": [
+    {
+      "id": "b6454b06-0927-4e7e-a3e6-4731cc0ef53f",
+      "name": "Receive completed simulated trades",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "c9f9a05d-5a72-4a69-b726-c6eb07d36f92",
+      "name": "Calculate backtest metrics in R",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nreturn $input.all().map(({json}, index) => {\n  const {trades} = json;\n  if (!Array.isArray(trades)) throw new Error(\"Expected a backtest trade list\");\n  let cumulativeR = 0, peakR = 0, maxClosedTradeDrawdownR = 0;\n  let plannedR = 0, gainsR = 0, lossesR = 0, wins = 0, losses = 0;\n  const completed = trades.map(trade => {\n    const {direction, entry, stop, target, exit, roundTripCost, closedAt} = trade;\n    if (![\"BUY\", \"SELL\"].includes(direction) ||\n        ![entry, stop, target, exit].every(v => Number.isFinite(v) && v > 0) ||\n        !Number.isFinite(roundTripCost) || roundTripCost < 0 ||\n        typeof closedAt !== \"string\" || !closedAt.endsWith(\"Z\") || !Number.isFinite(Date.parse(closedAt))) {\n      throw new Error(\"Invalid simulated trade or missing round-trip cost\");\n    }\n    const sign = direction === \"BUY\" ? 1 : -1;\n    const risk = (entry - stop) * sign;\n    const reward = (target - entry) * sign;\n    if (risk <= 0 || reward <= 0) throw new Error(\"Stop and target must bracket entry in trade direction\");\n    return {closedAt: Date.parse(closedAt), plannedR: reward / risk, netR: ((exit - entry) * sign - roundTripCost) / risk};\n  }).sort((left, right) => left.closedAt - right.closedAt);\n  // Settle trades sharing a timestamp together so input order cannot alter drawdown.\n  let settlement = 0;\n  for (const [i, trade] of completed.entries()) {\n    plannedR += trade.plannedR;\n    settlement += trade.netR;\n    if (trade.netR > 0) { gainsR += trade.netR; wins++; }\n    if (trade.netR < 0) { lossesR -= trade.netR; losses++; }\n    if (completed[i + 1]?.closedAt !== trade.closedAt) {\n      cumulativeR += settlement;\n      peakR = Math.max(peakR, cumulativeR);\n      maxClosedTradeDrawdownR = Math.max(maxClosedTradeDrawdownR, peakR - cumulativeR);\n      settlement = 0;\n    }\n  }\n  const count = completed.length;\n  return {json:{count,wins,losses,breakeven:count-wins-losses,winRate:count?wins/count:null,\n    avgPlannedRR:count?plannedR/count:null, netR:cumulativeR, expectancyR:count?cumulativeR/count:null,\n    profitFactor:lossesR?gainsR/lossesR:null,maxClosedTradeDrawdownR},pairedItem:{item:index}};\n});"
+      }
+    }
+  ],
+  "connections": {
+    "Receive completed simulated trades": {
+      "main": [
+        [
+          {
+            "node": "Calculate backtest metrics in R",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
