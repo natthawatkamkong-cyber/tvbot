@@ -109,7 +109,7 @@ def setup_stream(bars):
         prev = bar
 
 
-def replay(bars, signals, cost):
+def replay(bars, signals, cost, move_after_tp1=False):
     position = None
     trades = []
     rejected = {}
@@ -129,13 +129,15 @@ def replay(bars, signals, cost):
         if position is None:
             continue
         side = position["side"]
-        stop = position["stop"]
         fills = position["fills"]
+        moved = move_after_tp1 and bool(fills)
+        stop = position["entry"] if moved else position["stop"]
+        stop_reason = "SL_AT_ENTRY" if moved else "SL"
         adverse = bar.low if side == 1 else bar.high
         favorable = bar.high if side == 1 else bar.low
         if (adverse - stop) * side <= 0:
             stop_fill = bar.open if (bar.open - stop) * side <= 0 else stop
-            fills.extend(dict(reason="SL", price=stop_fill, minute=bar.minute) for _ in range(3 - len(fills)))
+            fills.extend(dict(reason=stop_reason, price=stop_fill, minute=bar.minute) for _ in range(3 - len(fills)))
         else:
             for level, target in enumerate(position["targets"][len(fills):], start=len(fills) + 1):
                 if (favorable - target) * side >= 0:
@@ -181,11 +183,13 @@ def main():
                   complete_bars={tf: len(complete_buckets(bars, tf)) for tf in (15, 60, 240)}, runs=[])
     for name, signals in candidates.items():
         for cost in args.cost:
-            trades, open_trade, rejected = replay(bars, signals, cost)
-            report["runs"].append(dict(variant=name, round_trip_cost=cost, signals=len(signals),
-                rejected=rejected, unfilled_at_end=int(bars[-1].minute + 1 in signals),
-                overall=stats(trades), by_type={k: stats([t for t in trades if t["kind"] == k])
-                    for k in ("trend", "countertrend")}, open_trade=open_trade, trades=trades))
+            for move_after_tp1 in (False, True):
+                trades, open_trade, rejected = replay(bars, signals, cost, move_after_tp1)
+                report["runs"].append(dict(variant=name, round_trip_cost=cost, signals=len(signals),
+                    stop_policy="entry_after_tp1" if move_after_tp1 else "fixed",
+                    rejected=rejected, unfilled_at_end=int(bars[-1].minute + 1 in signals),
+                    overall=stats(trades), by_type={k: stats([t for t in trades if t["kind"] == k])
+                        for k in ("trend", "countertrend")}, open_trade=open_trade, trades=trades))
     print(json.dumps(report, indent=2, allow_nan=False))
 
 
