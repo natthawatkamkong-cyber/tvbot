@@ -1,0 +1,49 @@
+{
+  "id": "GoldAiPromptResearch",
+  "name": "Gold AI - strategy prompt development",
+  "active": false,
+  "nodes": [
+    {
+      "id": "2daa9fde-11c3-46af-bbe9-fc5753a5da67",
+      "name": "Receive optional evaluation evidence",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "f207cd59-bf72-4340-8d55-50eada618016",
+      "name": "Prepare Gold AI strategy research prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const confirmed = {\n  instrument: \"XAUUSD\",\n  timeframes: [\"D1\",\"H4\",\"H1\",\"M15\",\"M1\"],\n  tradeGrades: [\"A+\",\"A\",\"B+\"],\n  mandatory: [\"A+ requires trend alignment\"],\n  methods: [\"SMC Broad Chop Multi-Timeframe\",\"BOS / CHoCH\",\"Buy-side and sell-side liquidity\",\"Demand / Supply\",\"Support / Resistance\",\"Fibonacci\",\"MACD\",\"Bollinger Bands\",\"EMA 13 / 50 / 200\"],\n  safeguards: [\"Respect provider session breaks and holidays\",\"Handle high-impact USD news\",\"Use only data known at decision time\"],\n};\nconst instructions = [\n  \"Develop versioned, testable candidate rules for Gold AI from the confirmed brief.\",\n  \"Treat any threshold, timeframe role or grade boundary not explicitly confirmed as a hypothesis.\",\n  \"Propose explicit definitions and pseudocode for trend, zone, trigger, invalidation, WAIT, A+, A, B+ and All-in zone eligibility. Treat All-in as a zone label; do not recommend account exposure.\",\n  \"For each rule define required inputs, evaluation timestamp, adverse examples and expected outputs.\",\n  \"Specify point-in-time replay, cost assumptions, ablation against a simpler baseline, a chronological holdout, and reporting by grade in net R, sample count and drawdown.\",\n  \"Return JSON with candidateRules, assumptions, testCases, baseline, evaluationPlan, and openQuestions. Do not invent market data, trade outcomes or strategy performance.\",\n  \"Keep the candidate research-only. It must never become an active trading or member rule automatically.\"\n].join(\"\\n\");\nreturn $input.all().map(({json},index)=>{\n  if(json.previousEvaluation!=null && typeof json.previousEvaluation!==\"object\") throw new Error(\"Expected a structured previous evaluation\");\n  return {json:{stage:\"RESEARCH_ONLY\",instructions,confirmed,previousEvaluation:json.previousEvaluation??null},pairedItem:{item:index}};\n});"
+      }
+    }
+  ],
+  "connections": {
+    "Receive optional evaluation evidence": {
+      "main": [
+        [
+          {
+            "node": "Prepare Gold AI strategy research prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
