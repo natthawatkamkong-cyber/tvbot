@@ -55,7 +55,7 @@ def webhook():
             app.logger.error("Telegram API rejected message")
             return jsonify(error="Telegram delivery failed"), 502
     except (requests.RequestException, ValueError):
-        app.logger.exception("Telegram delivery failed")
+        app.logger.error("Telegram delivery failed")
         return jsonify(error="Telegram delivery failed"), 502
     return jsonify(status="sent")
 
