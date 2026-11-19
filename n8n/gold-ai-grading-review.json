@@ -1,0 +1,48 @@
+{
+  "name": "Gold AI - Confirmed grading requirements",
+  "nodes": [
+    {
+      "id": "773379da-3a5f-4e84-9d30-4136104b9527",
+      "name": "Receive market analysis",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "4259f2e8-72cb-48db-a3d8-7551e115248b",
+      "name": "Check A+ trend requirement",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Record the confirmed trend requirement without assigning a trade grade.\nreturn $input.all().map((item, index) => {\n  const { direction, trendDirection } = item.json;\n  const validDirections = [\"BUY\", \"SELL\"];\n  const trendStatus = validDirections.includes(direction) && validDirections.includes(trendDirection)\n    ? (direction === trendDirection ? \"ALIGNED\" : \"OPPOSED\")\n    : \"UNDETERMINED\";\n\n  return {\n    json: {\n      ...item.json,\n      gradingReview: {\n        allowedGradeLabels: [\"A+\", \"A\", \"B+\"],\n        aPlusTrendRequirement: trendStatus,\n        tradeGrade: null,\n        allInZone: null,\n        status: \"WAIT\",\n        notificationAllowed: false,\n      },\n    },\n    pairedItem: { item: index },\n  };\n});"
+      }
+    }
+  ],
+  "connections": {
+    "Receive market analysis": {
+      "main": [
+        [
+          {
+            "node": "Check A+ trend requirement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
