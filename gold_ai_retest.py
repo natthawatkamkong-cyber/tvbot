@@ -106,6 +106,10 @@ def setup_stream(bars):
                     if zone and bar.low <= zone[1] and bar.high >= zone[0]:
                         stop = min(zone[0], bar.low, prev.low) if up else max(zone[1], bar.high, prev.high)
                         yield variant, closed, side, kind, stop, zone
+                        if variant == "structure" and kind == "trend" and closed % 15:
+                            edge = zone[1] if up else zone[0]
+                            if all((price - edge) * side > 0 for price in (prev.low if up else prev.high, bar.close)):
+                                yield "structure_retest", closed, side, kind, stop, zone
         prev = bar
 
 
@@ -174,7 +178,7 @@ def main():
     if any(not math.isfinite(c) or c < 0 for c in args.cost):
         parser.error("--cost must be finite and nonnegative")
     bars = read_bars(args.csv)
-    candidates = {"structure": {}, "structure_fvg": {}}
+    candidates = {"structure": {}, "structure_fvg": {}, "structure_retest": {}}
     for name, at, side, kind, stop, zone in setup_stream(bars):
         candidates[name][at] = (side, kind, stop, zone)
     report = dict(bars=len(bars), start_utc=datetime.fromtimestamp(bars[0].minute * 60, timezone.utc).isoformat(),
