@@ -1,0 +1,193 @@
+{
+  "id": "GoldAiTwelveFetch",
+  "name": "Gold AI - session-gated Twelve Data candle requests",
+  "active": false,
+  "nodes": [
+    {
+      "id": "16aaa12a-50c4-470a-a259-0e56888320a4",
+      "name": "Receive provider calendar",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "9193becc-5467-44a9-8d1f-78afd914eab4",
+      "name": "Check provider session",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "GoldAiSessionGate"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    },
+    {
+      "id": "097b40ef-d386-4c6c-bfb8-f60225cbc5ae",
+      "name": "Fetch allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        580,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "7671d13d-1d12-435e-be93-61357631f9b0",
+              "leftValue": "={{ $json.marketSession.allowFetch && $json.source === \"Twelve Data\" }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "2100d660-fe16-4e7c-834c-57384c49de41",
+      "name": "Prepare five timeframe requests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "\nconst intervals = {D1:\"1day\",H4:\"4h\",H1:\"1h\",M15:\"15min\",M1:\"1min\"};\nreturn $input.all().flatMap(({json}, index) =>\n  Object.entries(intervals).map(([timeframe, interval]) => ({\n    json:{...json,timeframe,interval},pairedItem:{item:index}\n  }))\n);"
+      }
+    },
+    {
+      "id": "839e0440-3aff-4d69-a582-97a236593cf9",
+      "name": "Fetch Twelve Data candles",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        -100
+      ],
+      "parameters": {
+        "url": "https://api.twelvedata.com/time_series",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "XAU/USD"
+            },
+            {
+              "name": "interval",
+              "value": "={{ $json.interval }}"
+            },
+            {
+              "name": "outputsize",
+              "value": "201"
+            },
+            {
+              "name": "timezone",
+              "value": "UTC"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "3ab64968-b819-46ba-9528-6ba5a1eb55e3",
+      "name": "Return session status",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        840,
+        130
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Receive provider calendar": {
+      "main": [
+        [
+          {
+            "node": "Check provider session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check provider session": {
+      "main": [
+        [
+          {
+            "node": "Fetch allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch allowed?": {
+      "main": [
+        [
+          {
+            "node": "Prepare five timeframe requests",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return session status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare five timeframe requests": {
+      "main": [
+        [
+          {
+            "node": "Fetch Twelve Data candles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

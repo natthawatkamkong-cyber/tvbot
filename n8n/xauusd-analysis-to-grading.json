@@ -1,0 +1,82 @@
+{
+  "id": "GoldAiXauReview",
+  "name": "Gold AI - XAUUSD analysis to grading",
+  "nodes": [
+    {
+      "id": "7a60461e-3209-4e1e-8b83-d28be9c09e6e",
+      "name": "Receive XAUUSD analysis",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "f342dc75-5f9e-40cd-8696-73970a0f5d12",
+      "name": "Validate XAUUSD analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map((item, index) => {\n    const { symbol, direction, trendDirection } = item.json;\n    if (![\"XAUUSD\", \"XAU/USD\"].includes(symbol)) {\n      throw new Error(\"Expected XAUUSD market analysis\");\n    }\n    return {\n      json: { symbol: \"XAUUSD\", direction, trendDirection },\n      pairedItem: { item: index },\n    };\n  });"
+      }
+    },
+    {
+      "id": "a514f72d-1f4f-4c8e-9449-6bea4e490701",
+      "name": "Run grading review",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "GoldAiGradeReview"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive XAUUSD analysis": {
+      "main": [
+        [
+          {
+            "node": "Validate XAUUSD analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate XAUUSD analysis": {
+      "main": [
+        [
+          {
+            "node": "Run grading review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

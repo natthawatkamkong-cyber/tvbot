@@ -1,0 +1,49 @@
+{
+  "id": "GoldAiNewsRisk",
+  "name": "Gold AI - high-impact USD news risk",
+  "active": false,
+  "nodes": [
+    {
+      "id": "7b728681-7a18-4939-95a1-fc5361f2a548",
+      "name": "Receive economic calendar",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "9e9a5964-b7e1-49f3-a3c0-fabf887e0308",
+      "name": "Evaluate high-impact USD news",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst time=value=>typeof value===\"string\" && value.endsWith(\"Z\") ? Date.parse(value) : NaN;\nconst thai=new Intl.DateTimeFormat(\"en-GB\",{timeZone:\"Asia/Bangkok\",dateStyle:\"short\",timeStyle:\"short\"});\nreturn $input.all().map(({json},index)=>{\n  const {asOf,calendar,beforeMinutes,afterMinutes}=json;\n  const now=time(asOf), start=time(calendar?.validFrom), end=time(calendar?.validUntil);\n  const margins=[beforeMinutes,afterMinutes];\n  const bufferValid=margins.every(value=>Number.isSafeInteger(value)&&value>=0);\n  const before=beforeMinutes*60000, after=afterMinutes*60000;\n  const events=Array.isArray(calendar?.events)?calendar.events:null;\n  const valid=bufferValid && typeof calendar?.source===\"string\" && calendar.source.trim() &&\n    Number.isFinite(now) && Number.isFinite(start) && Number.isFinite(end) && start<end &&\n    start<=now-after && now+before<end && events &&\n    events.every(event=>event && typeof event.title===\"string\" && event.title.trim() &&\n      /^[A-Z]{3}$/.test(event.currency) && [\"HIGH\",\"MEDIUM\",\"LOW\"].includes(event.impact) &&\n      time(event.scheduledAt)>=start && time(event.scheduledAt)<end);\n  const relevant=valid?events.filter(event=>event.currency===\"USD\"&&event.impact===\"HIGH\")\n    .sort((a,b)=>time(a.scheduledAt)-time(b.scheduledAt)):[];\n  const present=event=>({title:event.title,scheduledAt:event.scheduledAt,\n    bangkokTime:thai.format(time(event.scheduledAt)),timeZone:\"Asia/Bangkok\"});\n  const active=relevant.filter(event=>time(event.scheduledAt)-before<=now&&now<=time(event.scheduledAt)+after);\n  const next=relevant.find(event=>time(event.scheduledAt)>now);\n  const status=!valid?\"NEWS_CALENDAR_UNAVAILABLE\":active.length?\"HIGH_NEWS_RISK\":\"CLEAR\";\n  return {json:{asOf,newsRisk:{status,source:calendar?.source??null,\n    canProceedToSignalChecks:status===\"CLEAR\",activeEvents:active.map(present),nextEvent:next?present(next):null}},\n    pairedItem:{item:index}};\n});"
+      }
+    }
+  ],
+  "connections": {
+    "Receive economic calendar": {
+      "main": [
+        [
+          {
+            "node": "Evaluate high-impact USD news",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

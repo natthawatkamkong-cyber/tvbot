@@ -1,0 +1,49 @@
+{
+  "id": "GoldAiFvgResearch",
+  "name": "Gold AI - FVG retest research V1",
+  "active": false,
+  "nodes": [
+    {
+      "id": "2daa9fde-11c3-46af-bbe9-fc5753a5da67",
+      "name": "Receive closed research candles",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "f207cd59-bf72-4340-8d55-50eada618016",
+      "name": "Generate FVG retest candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map(({json}, index) => {\n  const {candles} = json;\n  if (!Array.isArray(candles)) throw new Error(\"Expected closed XAUUSD M1 candles\");\n  const signals = [];\n  let zone = null, detected = 0;\n  for (const [i, bar] of candles.entries()) {\n    const start = Date.parse(bar.openTime), end = Date.parse(bar.closeTime);\n    if (!Number.isFinite(start) || end - start !== 60000 ||\n        ![bar.open,bar.high,bar.low,bar.close].every(p => Number.isFinite(p) && p > 0) ||\n        bar.low > Math.min(bar.open,bar.close) || bar.high < Math.max(bar.open,bar.close)) {\n      throw new Error(\"Invalid M1 candle\");\n    }\n    if (i && start < Date.parse(candles[i-1].closeTime)) throw new Error(\"Unordered or overlapping M1 candles\");\n    if (i && start !== Date.parse(candles[i-1].closeTime)) zone = null;\n    if (zone) {\n      const {direction, low, high, created} = zone;\n      const buy = direction === \"BUY\";\n      const stop = buy ? low : high;\n      const invalid = buy ? bar.low <= stop : bar.high >= stop;\n      const reclaimed = buy ? bar.low <= high && bar.close > high : bar.high >= low && bar.close < low;\n      if (invalid || i - created > 12) zone = null;\n      else if (reclaimed) {\n        const sign = buy ? 1 : -1;\n        const risk = (bar.close - stop) * sign;\n        const target = bar.close + sign * risk * 2;\n        if (target > 0) signals.push({direction,stop,target,confirmedAt:bar.closeTime});\n        zone = null;\n      }\n    }\n    if (i < 2 || Date.parse(candles[i-2].openTime) !== start - 120000 ||\n        Date.parse(candles[i-1].openTime) !== start - 60000) continue;\n    const first = candles[i-2];\n    if (bar.low > first.high) {\n      zone = {direction:\"BUY\",low:first.high,high:bar.low,created:i};\n      detected++;\n    } else if (bar.high < first.low) {\n      zone = {direction:\"SELL\",low:bar.high,high:first.low,created:i};\n      detected++;\n    }\n  }\n  return {json:{...json,signals,fvgDetected:detected,strategyVersion:\"FVG_RETEST_RESEARCH_V1\"},pairedItem:{item:index}};\n});"
+      }
+    }
+  ],
+  "connections": {
+    "Receive closed research candles": {
+      "main": [
+        [
+          {
+            "node": "Generate FVG retest candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "id": "GoldAiTradeReplay",
+  "name": "Gold AI - historical trade replay",
+  "active": false,
+  "nodes": [
+    {
+      "id": "b28b1143-3ca9-4498-9d05-74d1b9f8150e",
+      "name": "Receive historical candles and signals",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "bb3f87e0-d423-4b83-9b32-0493a01a436f",
+      "name": "Replay trades from next candle open",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst utc = value => typeof value === \"string\" && value.endsWith(\"Z\") ? Date.parse(value) : NaN;\nconst price = value => Number.isFinite(value) && value > 0;\nreturn $input.all().map(({json}, index) => {\n  const {signals, candles, roundTripCost} = json;\n  if (!Array.isArray(signals) || !Array.isArray(candles) || !Number.isFinite(roundTripCost) || roundTripCost < 0) {\n    throw new Error(\"Expected signals, closed candles and round-trip cost\");\n  }\n  const bars = candles.map(bar => ({...bar, start:utc(bar.openTime), end:utc(bar.closeTime)}))\n    .sort((a,b) => a.start-b.start);\n  for (const [i, bar] of bars.entries()) {\n    if (!Number.isFinite(bar.start) || !Number.isFinite(bar.end) || bar.start >= bar.end ||\n        i > 0 && bars[i-1].end > bar.start ||\n        ![bar.open,bar.high,bar.low,bar.close].every(price) ||\n        bar.low > Math.min(bar.open,bar.close) || bar.high < Math.max(bar.open,bar.close)) {\n      throw new Error(\"Invalid or overlapping replay candle\");\n    }\n  }\n  const events = signals.map(signal => {\n    const at = utc(signal.confirmedAt);\n    if (!Number.isFinite(at) || ![\"BUY\",\"SELL\"].includes(signal.direction) ||\n        ![signal.stop,signal.target].every(price)) throw new Error(\"Invalid replay signal\");\n    return {...signal, at};\n  }).sort((a,b)=>a.at-b.at);\n  if (events.some((signal,i)=>i>0 && signal.at===events[i-1].at)) throw new Error(\"Ambiguous simultaneous replay signals\");\n  const trades=[], skipped=[];\n  let position=null, next=0;\n  for (const bar of bars) {\n    while (next<events.length && events[next].at<=bar.start) {\n      const signal=events[next++];\n      const sign=signal.direction===\"BUY\"?1:-1;\n      if (position || (bar.open-signal.stop)*sign<=0 || (signal.target-bar.open)*sign<=0) {\n        skipped.push({confirmedAt:signal.confirmedAt,reason:position?\"POSITION_ALREADY_OPEN\":\"OPEN_OUTSIDE_PLAN\"});\n        continue;\n      }\n      position={direction:signal.direction, stop:signal.stop, target:signal.target, entry:bar.open,\n        openedAt:bar.openTime, confirmedAt:signal.confirmedAt, roundTripCost, sign};\n    }\n    if (!position) continue;\n    const {sign,stop,target,...trade}=position;\n    const stopHit=sign===1?bar.low<=stop:bar.high>=stop;\n    const targetHit=sign===1?bar.high>=target:bar.low<=target;\n    const gapStop=(bar.open-stop)*sign<=0;\n    const gapTarget=(bar.open-target)*sign>=0;\n    if (!stopHit && !targetHit && !gapStop && !gapTarget) continue;\n    const stopped=gapStop || (!gapTarget && stopHit);\n    trades.push({...trade,stop,target,exit:stopped?(gapStop?bar.open:stop):target,\n      closedAt:gapStop||gapTarget?bar.openTime:bar.closeTime,reason:stopped?\"STOP\":\"TARGET\"});\n    position=null;\n  }\n  const pendingSignals=events.slice(next).map(({confirmedAt})=>confirmedAt);\n  return {json:{trades,skipped,pendingSignals,openPosition:position!==null},pairedItem:{item:index}};\n});"
+      }
+    }
+  ],
+  "connections": {
+    "Receive historical candles and signals": {
+      "main": [
+        [
+          {
+            "node": "Replay trades from next candle open",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

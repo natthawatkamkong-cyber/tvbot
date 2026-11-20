@@ -1,0 +1,49 @@
+{
+  "id": "GoldAiTickToM1",
+  "name": "Gold AI - aggregate XAUUSD ticks into M1",
+  "active": false,
+  "nodes": [
+    {
+      "id": "998dcf92-0fd8-4e04-a337-c36a68225a59",
+      "name": "Receive XAUUSD tick batch",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "a7f51956-bf8e-4b53-9937-619abb217be7",
+      "name": "Build M1 candles from price ticks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return $input.all().map(({json}, index) => {\n  const {symbol, ticks, completeThroughMs} = json;\n  if (symbol !== \"XAU/USD\" || !Array.isArray(ticks) || !Number.isSafeInteger(completeThroughMs) || completeThroughMs < 0) {\n    throw new Error(\"Expected XAU/USD ticks and a verified completeness timestamp\");\n  }\n  const ordered = ticks.map((tick, sequence) => {\n    const {timestampMs, price} = tick ?? {};\n    if (!Number.isSafeInteger(timestampMs) || timestampMs < 0 || timestampMs >= 8640000000000000 - 60000 ||\n        !Number.isFinite(price) || price <= 0) throw new Error(\"Invalid price tick\");\n    return {timestampMs, price, sequence};\n  }).sort((a,b) => a.timestampMs-b.timestampMs || a.sequence-b.sequence);\n  const bars = new Map();\n  for (const {timestampMs, price} of ordered) {\n    const minute = Math.floor(timestampMs / 60000) * 60000;\n    const bar = bars.get(minute);\n    if (bar) {\n      bar.high = Math.max(bar.high, price);\n      bar.low = Math.min(bar.low, price);\n      bar.close = price;\n    } else {\n      bars.set(minute, {\n        openTime: new Date(minute).toISOString(),\n        closeTime: new Date(minute + 60000).toISOString(),\n        open: price, high: price, low: price, close: price,\n      });\n    }\n  }\n  const closed = [], provisional = [];\n  for (const [minute, bar] of bars) {\n    (minute + 60000 <= completeThroughMs ? closed : provisional).push(bar);\n  }\n  return {json:{symbol:\"XAUUSD\", timeframe:\"M1\", completeThroughMs, closed, provisional},pairedItem:{item:index}};\n});\n"
+      }
+    }
+  ],
+  "connections": {
+    "Receive XAUUSD tick batch": {
+      "main": [
+        [
+          {
+            "node": "Build M1 candles from price ticks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

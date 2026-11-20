@@ -1,0 +1,82 @@
+{
+  "id": "GoldAiTwelveToEma",
+  "name": "Gold AI - Twelve Data to closed-candle analysis",
+  "active": false,
+  "nodes": [
+    {
+      "id": "270b2dd8-a21b-4af5-8505-d123d3aff885",
+      "name": "Receive Twelve Data batch",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "3a881585-320b-43be-be37-cd5af32894f9",
+      "name": "Normalize verified candle boundaries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nconst spec={D1:[\"1day\",null],H4:[\"4h\",14400000],H1:[\"1h\",3600000],M15:[\"15min\",900000],M1:[\"1min\",60000]};\nconst utc=value=>typeof value===\"string\"&&/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$/.test(value)?Date.parse(value):NaN;\nreturn $input.all().map(({json},index)=>{\n  const {asOf,responses,dailyCloseUtcByDate}=json;\n  const cutoff=utc(asOf);\n  if(!Number.isFinite(cutoff)||!responses||typeof responses!==\"object\") throw new Error(\"Expected a dated Twelve Data batch\");\n  const candlesByTimeframe={};\n  for(const [tf,[interval,duration]] of Object.entries(spec)){\n    const result=responses[tf];\n    if(result?.status!==\"ok\" || result.meta?.symbol!==\"XAU/USD\" || result.meta?.interval!==interval || !Array.isArray(result.values)){\n      throw new Error(\"Invalid Twelve Data response for \"+tf);\n    }\n    if(duration!==null && ![\"UTC\",\"Etc/UTC\"].includes(result.meta.exchange_timezone)){\n      throw new Error(\"Unverified UTC metadata for \"+tf);\n    }\n    const bars=[];\n    for(const row of result.values){\n      const date=row?.datetime;\n      const validDate=typeof date===\"string\" && (duration===null ? /^\\d{4}-\\d{2}-\\d{2}$/ : /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/).test(date);\n      if(!validDate) throw new Error(\"Invalid provider candle datetime for \"+tf);\n      const boundary=duration===null ? utc(dailyCloseUtcByDate?.[date]) : utc(date.replace(\" \",\"T\")+\"Z\")+duration;\n      if(!Number.isFinite(boundary)) throw new Error(\"Missing or invalid candle close boundary for \"+tf+\" \"+date);\n      if(boundary>cutoff) continue;\n      const {open,high,low,close}=row;\n      bars.push({closeTime:new Date(boundary).toISOString(),open,high,low,close});\n    }\n    candlesByTimeframe[tf]=bars;\n  }\n  return {json:{symbol:\"XAUUSD\",source:\"Twelve Data\",asOf,candlesByTimeframe},pairedItem:{item:index}};\n});"
+      }
+    },
+    {
+      "id": "b4abe3a7-358b-4d01-b036-19a45a41930d",
+      "name": "Calculate EMA from closed candles",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "GoldAiClosedBars"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Twelve Data batch": {
+      "main": [
+        [
+          {
+            "node": "Normalize verified candle boundaries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize verified candle boundaries": {
+      "main": [
+        [
+          {
+            "node": "Calculate EMA from closed candles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
